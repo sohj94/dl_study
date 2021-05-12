@@ -1,0 +1,11 @@
+## Ignore File List ##
+**/__pycache__/
+.gitignore.swp
+data/temp/**
+data/cifar-10/**
+data/mnist/**
+*.csv
+*.png
+src/runs/
+*.gz
+*.pkl
