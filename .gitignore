@@ -5,7 +5,6 @@ data/temp/**
 data/cifar-10/**
 data/mnist/**
 *.csv
-*.png
 src/runs/
 *.gz
 *.pkl
