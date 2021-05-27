@@ -6,11 +6,12 @@ import time
 from tqdm import tqdm
 
 class Trainer:
-	def __init__(self, model, criterion, optimizer, args):
+	def __init__(self, model, criterion, optimizer, scheduler = None, args = None):
 		self.model = model
 		self.criterion = criterion
 		self.optimizer = optimizer
 		self.args = args
+		self.scheduler = scheduler
 
 	def fit(self, train_data, last_epoch=0):
 		self.model.train()
@@ -24,6 +25,8 @@ class Trainer:
 				self.optimizer.zero_grad()
 				loss.backward()
 				self.optimizer.step()
+				if not self.scheduler is None :
+					self.scheduler.step()
 				epoch_loss += loss.detach().item()
 				# print("Ran in {} seconds".format(time.time() - tmp))
 				# print('epoch : {0} step : [{1}/{2}] loss : {3}'.format(epoch+last_epoch, iter, len(train_data), loss.detach().item()))

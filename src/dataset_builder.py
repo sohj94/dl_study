@@ -33,3 +33,4 @@ if __name__ == "__main__" :
 
     print(torch.numel(mnist_train[0][0]))
     print(cifar_train[0][0].shape)
+    print(cifar_train[0][0])
