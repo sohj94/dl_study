@@ -8,3 +8,4 @@ data/mnist/**
 src/runs/
 *.gz
 *.pkl
+*.pth
