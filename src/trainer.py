@@ -11,7 +11,8 @@ class Trainer:
 		self.criterion = criterion
 		self.optimizer = optimizer
 		self.args = args
-		self.scheduler = scheduler
+		self.scheduler = scheduler[0]
+		self.ReduceLROnPlateau_flag = scheduler[1]
 		self.loss_history = []
 		self.metric_history = []
 		self.lr_history = []
@@ -27,7 +28,10 @@ class Trainer:
 			self.metric_history.append(train_metric)
 			self.lr_history.append(current_lr)
 			if self.scheduler is not None :
-				self.scheduler.step(train_loss)
+				if self.ReduceLROnPlateau_flag :
+					self.scheduler.step(train_loss)
+				else :
+					self.scheduler.step()
 			print('train loss: %.6f, accuracy: %.2f, time: %.4f min' %(train_loss, 100*train_metric, (time.time()-start_time)/60))
 			print('-'*10)
 
