@@ -31,6 +31,7 @@ parser.add_argument('--batch_size', dest='batch_size', type=int, default=64)
 parser.add_argument('--train', dest='train', action='store_false', default=True)
 parser.add_argument('--continue_train', dest='continue_train', action='store_true', default=False)
 parser.add_argument('--load_epoch', dest='load_epoch', type=int, default=29)
+parser.add_argument('--skip_exist_train', dest='skip_exist_train', action='store_true', default=False)
 
 args = parser.parse_args()
 
@@ -48,7 +49,7 @@ if not os.path.isdir(args.model_dir) :
 # writer = SummaryWriter('runs/alexnet')
 
 # hyperparameter
-learning_rates = np.logspace(-2, -6, 5)
+learning_rates = np.logspace(-1, -5, 5)
 wds = np.logspace(-4, -8, 5)
 batch_sizes = [16, 32, 64, 128, 256]
 optimizers = ['Adadelta', 'Adagrad', 'Adam', 'Adamax', 'RMSprop', 'SGD']
@@ -60,6 +61,7 @@ schedulers = ([[None, None], ['StepLR', 'step_size=10, gamma=0.2'], ['Exponentia
 train_dataset, test_dataset = load_data_set(args.data)
 train_data = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, **kwargs)
 test_data = DataLoader(test_dataset, batch_size=1, shuffle=False, **kwargs)
+print(len(test_data.dataset))
 
 # define model
 model = models.resnet50(num_classes=10)
@@ -73,7 +75,7 @@ summary(model, (3, 32, 32), device=device.type)
 
 # hyperparameter setting
 hyperparameter = []
-default_param = {'lr':0.0001, 'wd':1e-5, 'batch_size':64}
+default_param = {'lr':0.001, 'wd':1e-5, 'batch_size':64}
 for optimizer in optimizers :
 	for scheduler in schedulers :
 		for lr in learning_rates :
@@ -99,13 +101,20 @@ for param in hyperparameter :
 	model = models.resnet50(num_classes=10).to(device)
 	criterion = nn.CrossEntropyLoss()
 	optimizer = eval('optim.'+param['optimizer']+"(model.parameters(), lr=param['lr'], weight_decay=param['wd'])")
-	scheduler = None if param['scheduler'][0] is None else eval('optim.lr_scheduler.'+param['scheduler'][0]+"(param['optimizer'][0],"+param['scheduler'][1]+')')
+	scheduler = None if param['scheduler'][0] is None else eval('optim.lr_scheduler.'+param['scheduler'][0]+"(optimizer,"+param['scheduler'][1]+')')
+	scheduler_flag = True if param['scheduler'][0] == 'ReduceLROnPlateau' else False
 
 	print("learning rate: {}, weight decay: {}, batch size: {}, optimizer: {}, scheduler: {}"\
 		.format(param['lr'], param['wd'], param['batch_size'], optimizer, scheduler))
 
 	# set trainer
-	trainer = Trainer(model, criterion, optimizer, scheduler, args)
+	trainer = Trainer(model, criterion, optimizer, [scheduler, scheduler_flag], args)
+
+	# skip for existing result
+	if (not args.skip_exist_train) and (os.path.isfile(args.model_dir + args.data + "_lr_{0:03}_wd_{1:03}_batch_{2:03}_{3}_{4}.pth".format( \
+			param['lr'], param['wd'], param['batch_size'], param['optimizer'], param['scheduler'][0]))) :
+		print("skip train")
+		continue
 
 	#train
 	if args.train:
@@ -117,18 +126,18 @@ for param in hyperparameter :
 			trainer.fit(train_data, last_epoch+1)
 		else :
 			trainer.fit(train_data)
+		torch.save(model.state_dict(), args.model_dir + args.data + "_lr_{0:03}_wd_{1:03}_batch_{2:03}_{3}_{4}.pth".format( \
+			param['lr'], param['wd'], param['batch_size'], param['optimizer'], param['scheduler'][0]))
+		model_history = pd.DataFrame([trainer.lr_history, trainer.loss_history, trainer.metric_history], index=["learning_rate", "loss", "metric"])
+		print(model_history)
+		model_history.to_csv(args.result_dir + args.data + "_lr_{0:03}_wd_{1:03}_batch_{2:03}_{3}_{4}.csv".format( \
+			param['lr'], param['wd'], param['batch_size'], param['optimizer'], param['scheduler'][0]))
 	else:
 		# model.load_state_dict(torch.load(args.model_dir + args.data + "_width_{0:03}_depth_{1:03}.pth".format(width, depth)))
 		model.load_state_dict(torch.load(args.model_dir + args.data + "_lr_{0:03}_wd_{1:03}_batch_{2:03}_{3}_{4}.pth".format( \
 			param['lr'], param['wd'], param['batch_size'], param['optimizer'], param['scheduler'][0])))
 
 	# torch.save(model.state_dict(), args.model_dir + args.data + "_width_{0:03}_depth_{1:03}.pth".format(width, depth))
-	torch.save(model.state_dict(), args.model_dir + args.data + "_lr_{0:03}_wd_{1:03}_batch_{2:03}_{3}_{4}.pth".format( \
-			param['lr'], param['wd'], param['batch_size'], param['optimizer'], param['scheduler'][0]))
-	model_history = pd.DataFrame([trainer.lr_history, trainer.loss_history, trainer.metric_history], index=["learning_rate", "loss", "metric"])
-	print(model_history)
-	model_history.to_csv(args.result_dir + args.data + "_lr_{0:03}_wd_{1:03}_batch_{2:03}_{3}_{4}.csv".format( \
-			param['lr'], param['wd'], param['batch_size'], param['optimizer'], param['scheduler'][0]))
 	accuracy = trainer.test(test_data)
 	# print("accuracy of model with width {} depth {}: {}".format(width, depth, accuracy))
 	print("accuracy of model: {}".format(accuracy))
