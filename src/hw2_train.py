@@ -59,9 +59,9 @@ schedulers = ([[None, None], ['StepLR', 'step_size=10, gamma=0.2'], ['Exponentia
 
 # # Dataset, Dataloader 정의
 train_dataset, test_dataset = load_data_set(args.data)
-train_data = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, **kwargs)
+# train_data = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, **kwargs)
 test_data = DataLoader(test_dataset, batch_size=1, shuffle=False, **kwargs)
-print(len(test_data.dataset))
+# print(len(test_data.dataset))
 
 # define model
 model = models.resnet50(num_classes=10)
@@ -75,29 +75,49 @@ summary(model, (3, 32, 32), device=device.type)
 
 # hyperparameter setting
 hyperparameter = []
-default_param = {'lr':0.001, 'wd':1e-5, 'batch_size':64}
-for optimizer in optimizers :
-	for scheduler in schedulers :
-		for lr in learning_rates :
-			param = copy.deepcopy(default_param)
-			param['lr'] = lr
-			param['optimizer'] = optimizer
-			param['scheduler'] = scheduler
-			hyperparameter.append(param)
-		for wd in wds :
-			param = copy.deepcopy(default_param)
-			param['wd'] = wd
-			param['optimizer'] = optimizer
-			param['scheduler'] = scheduler
-			hyperparameter.append(param)
-		for batch_size in batch_sizes :
-			param = copy.deepcopy(default_param)
-			param['batch_size'] = batch_size
-			param['optimizer'] = optimizer
-			param['scheduler'] = scheduler
-			hyperparameter.append(param)
+if os.path.isfile(args.result_dir + "optimal_parameter.csv") :
+	optimal_parameter = pd.read_csv(args.result_dir + "optimal_parameter.csv")
+	for i, param in optimal_parameter.iterrows() :
+		if not isinstance(param['scheduler'], str) and np.isnan(param['scheduler']) :
+			param['scheduler'] = None
+		for scheduler in schedulers :
+			if scheduler[0] == param['scheduler'] :
+				tmp = {'lr':param['lr'], 'wd':param['wd'], 'batch_size':param['batch_size'], 'optimizer':param['optimizer'], 'scheduler':scheduler}
+				break
+		hyperparameter.append(tmp)
+else :
+	default_param = {'lr':0.001, 'wd':1e-5, 'batch_size':64}
+	for optimizer in optimizers :
+		for scheduler in schedulers :
+			for lr in learning_rates :
+				param = copy.deepcopy(default_param)
+				param['lr'] = lr
+				param['optimizer'] = optimizer
+				param['scheduler'] = scheduler
+				hyperparameter.append(param)
+			for wd in wds :
+				param = copy.deepcopy(default_param)
+				param['wd'] = wd
+				param['optimizer'] = optimizer
+				param['scheduler'] = scheduler
+				hyperparameter.append(param)
+			for batch_size in batch_sizes :
+				param = copy.deepcopy(default_param)
+				param['batch_size'] = batch_size
+				param['optimizer'] = optimizer
+				param['scheduler'] = scheduler
+				hyperparameter.append(param)
 
+accuracies = {key[0]:{} for key in schedulers}
 for param in hyperparameter :
+	# skip for existing result
+	if args.train and (not args.skip_exist_train) and (os.path.isfile(args.model_dir + args.data + "_lr_{0:03}_wd_{1:03}_batch_{2:03}_{3}_{4}.pth".format( \
+			param['lr'], param['wd'], param['batch_size'], param['optimizer'], param['scheduler'][0]))) :
+		print("skip train")
+		continue
+
+	train_data = DataLoader(train_dataset, batch_size=param['batch_size'], shuffle=True, **kwargs)
+
 	model = models.resnet50(num_classes=10).to(device)
 	criterion = nn.CrossEntropyLoss()
 	optimizer = eval('optim.'+param['optimizer']+"(model.parameters(), lr=param['lr'], weight_decay=param['wd'])")
@@ -109,12 +129,6 @@ for param in hyperparameter :
 
 	# set trainer
 	trainer = Trainer(model, criterion, optimizer, [scheduler, scheduler_flag], args)
-
-	# skip for existing result
-	if (not args.skip_exist_train) and (os.path.isfile(args.model_dir + args.data + "_lr_{0:03}_wd_{1:03}_batch_{2:03}_{3}_{4}.pth".format( \
-			param['lr'], param['wd'], param['batch_size'], param['optimizer'], param['scheduler'][0]))) :
-		print("skip train")
-		continue
 
 	#train
 	if args.train:
@@ -133,7 +147,6 @@ for param in hyperparameter :
 		model_history.to_csv(args.result_dir + args.data + "_lr_{0:03}_wd_{1:03}_batch_{2:03}_{3}_{4}.csv".format( \
 			param['lr'], param['wd'], param['batch_size'], param['optimizer'], param['scheduler'][0]))
 	else:
-		# model.load_state_dict(torch.load(args.model_dir + args.data + "_width_{0:03}_depth_{1:03}.pth".format(width, depth)))
 		model.load_state_dict(torch.load(args.model_dir + args.data + "_lr_{0:03}_wd_{1:03}_batch_{2:03}_{3}_{4}.pth".format( \
 			param['lr'], param['wd'], param['batch_size'], param['optimizer'], param['scheduler'][0])))
 
@@ -144,3 +157,6 @@ for param in hyperparameter :
 
 	# result = pd.DataFrame(accuracies)
 	# result.to_csv(args.result_dir, index = False)
+	accuracies[param['scheduler'][0]][param['optimizer']] = accuracy
+train_result = pd.DataFrame(accuracies)
+train_result.to_csv(args.result_dir + "optimal_result.csv")

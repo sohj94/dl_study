@@ -9,3 +9,4 @@ src/runs/
 *.gz
 *.pkl
 *.pth
+*.png

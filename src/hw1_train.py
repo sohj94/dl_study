@@ -18,12 +18,12 @@ from model.hw1_model import hw1_model
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--data', dest='data', default="cifar-10")
-parser.add_argument('--result_dir', dest='result_dir', default="../data/result/hw1_result_cifar-10.csv")
-parser.add_argument('--model_dir', dest='model_dir', default="../data/temp/")
-parser.add_argument('--epochs', dest='epochs', type=int, default=20)
-parser.add_argument('--learning_rate', dest='learning_rate', type=float, default=0.001)
-parser.add_argument('--wd', dest='wd', type=float, default=1e-5)
-parser.add_argument('--batch_size', dest='batch_size', type=int, default=64)
+parser.add_argument('--result_dir', dest='result_dir', default="../data/result/hw2/hw1_result_cifar-10_Adamax_4096.csv")
+parser.add_argument('--model_dir', dest='model_dir', default="../data/hw1/Adamax/")
+parser.add_argument('--epochs', dest='epochs', type=int, default=30)
+parser.add_argument('--learning_rate', dest='learning_rate', type=float, default=0.01)
+parser.add_argument('--wd', dest='wd', type=float, default=1e-6)
+parser.add_argument('--batch_size', dest='batch_size', type=int, default=128)
 
 parser.add_argument('--train', dest='train', action='store_false', default=True)
 parser.add_argument('--continue_train', dest='continue_train', action='store_true', default=False)
@@ -50,17 +50,22 @@ train_data = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True,
 test_data = DataLoader(test_dataset, batch_size=1, shuffle=False, **kwargs)
 
 accuracies = []
-for width in range(10,151,10) :
+for width in [2**x for x in range(12, 13)] :
 	tmp_accuracy = []
 	for depth in range(3,16) :
+		print("####################################################")
+		print("width: {}, depth: {}".format(width, depth))
 
 		model = hw1_model(input_size = torch.numel(train_dataset[0][0]), width = width, depth = depth)
 		model.to(device)
 		criterion = nn.CrossEntropyLoss()
-		optimizer = optim.Adam(model.parameters(), lr=args.learning_rate, weight_decay=args.wd)
+		# optimizer = optim.Adam(model.parameters(), lr=args.learning_rate, weight_decay=args.wd)
+		# scheduler = [optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10, eta_min=args.learning_rate*0.01), False]
+		optimizer = optim.Adamax(model.parameters(), lr=args.learning_rate, weight_decay=args.wd)
+		scheduler = [optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9), False]
 
 		# set trainer
-		trainer = Trainer(model, criterion, optimizer, args)
+		trainer = Trainer(model, criterion, optimizer, scheduler, args)
 
 		#train
 		if args.train:
@@ -71,7 +76,11 @@ for width in range(10,151,10) :
 				# 그 다음 epoch부터 학습 시작
 				trainer.fit(train_data, last_epoch+1)
 			else :
-				trainer.fit(train_data)
+				if os.path.isfile(args.model_dir + args.data + "_width_{0:03}_depth_{1:03}.pth".format(width, depth)) :
+					print("skip train")
+					model.load_state_dict(torch.load(args.model_dir + args.data + "_width_{0:03}_depth_{1:03}.pth".format(width, depth)))
+				else :
+					trainer.fit(train_data)
 		else:
 			model.load_state_dict(torch.load(args.model_dir + args.data + "_width_{0:03}_depth_{1:03}.pth".format(width, depth)))
 
